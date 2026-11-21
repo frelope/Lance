@@ -1,0 +1,853 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lance Certo</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; color-scheme: light; }
+body { margin: 0; }
+/* Layout: tabuleiro com barra de avaliação no topo, painel de análise abaixo; duas colunas a partir de 880px. */
+:root {
+  --bg: #eef1f5;
+  --surface: #ffffff;
+  --fg: #17202b;
+  --muted: #5b6877;
+  --line: #d5dbe3;
+  --accent: #d98e04;
+  --on-accent: #1d1503;
+  --sq-light: #dfe5ec;
+  --sq-dark: #7f95ad;
+  --sel: rgba(217, 142, 4, 0.55);
+  --last: rgba(217, 142, 4, 0.30);
+  --dot: rgba(23, 32, 43, 0.30);
+  --check: rgba(212, 73, 61, 0.80);
+  --w-piece: #ffffff;
+  --w-stroke: #1d2733;
+  --b-piece: #18202a;
+  --b-stroke: #dfe5ec;
+  --bar-white: #f5f7fa;
+  --bar-black: #1d2733;
+  --ok: #23805a;
+  --err: #c23b30;
+  --font-display: "Space Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10151b; --surface: #18202a; --fg: #e8edf3; --muted: #93a1b2; --line: #2a3544;
+    --accent: #f2a93b; --on-accent: #1d1503; --sq-light: #9bacbf; --sq-dark: #4a5f78;
+    --sel: rgba(242, 169, 59, 0.60); --last: rgba(242, 169, 59, 0.30); --dot: rgba(16, 21, 27, 0.35);
+    --check: rgba(239, 107, 94, 0.85); --w-piece: #ffffff; --w-stroke: #10151b;
+    --b-piece: #10151b; --b-stroke: #cfd8e3; --bar-white: #e8edf3; --bar-black: #0a0e13;
+    --ok: #4cc28d; --err: #ef6b5e; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #10151b; --surface: #18202a; --fg: #e8edf3; --muted: #93a1b2; --line: #2a3544;
+  --accent: #f2a93b; --on-accent: #1d1503; --sq-light: #9bacbf; --sq-dark: #4a5f78;
+  --sel: rgba(242, 169, 59, 0.60); --last: rgba(242, 169, 59, 0.30); --dot: rgba(16, 21, 27, 0.35);
+  --check: rgba(239, 107, 94, 0.85); --w-piece: #ffffff; --w-stroke: #10151b;
+  --b-piece: #10151b; --b-stroke: #cfd8e3; --bar-white: #e8edf3; --bar-black: #0a0e13;
+  --ok: #4cc28d; --err: #ef6b5e; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.45;
+  padding-block: 16px 32px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.app { max-width: 1040px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { font-family: var(--font-display); font-weight: 700; font-size: 1.7rem; line-height: 1.1; margin: 0; text-wrap: balance; }
+.sub { margin: 4px 0 0; color: var(--muted); font-size: 0.9rem; }
+.chip { font-size: 0.78rem; padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--surface); max-width: 100%; }
+.chip.ok { color: var(--ok); border-color: var(--ok); }
+.chip.warn { color: var(--err); border-color: var(--err); }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.seg button { font: inherit; font-weight: 600; padding: 12px 10px; min-height: 44px; border: 0; background: transparent; color: var(--muted); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+.layout { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 880px) { .layout { grid-template-columns: minmax(0, 560px) minmax(0, 1fr); align-items: start; } }
+.left, .right { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.boardwrap { display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 8px; align-items: stretch; }
+.evalbar { position: relative; border-radius: 6px; overflow: hidden; background: var(--bar-black); border: 1px solid var(--line); }
+.evalfill { position: absolute; left: 0; right: 0; bottom: 0; height: 50%; background: var(--bar-white); transition: height 0.25s ease; }
+.evalbar.flip .evalfill { bottom: auto; top: 0; }
+.boardbox { position: relative; min-width: 0; }
+.board { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); grid-template-rows: repeat(8, minmax(0, 1fr)); aspect-ratio: 1; width: 100%; container-type: inline-size; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); }
+.sq { position: relative; display: flex; align-items: center; justify-content: center; padding: 0; margin: 0; border: 0; border-radius: 0; font: inherit; cursor: pointer; background: var(--sq-light); min-width: 0; min-height: 0; overflow: hidden; }
+.sq.dark { background: var(--sq-dark); }
+.sq.last::before, .sq.sel::before, .sq.chk::before { content: ""; position: absolute; inset: 0; }
+.sq.last::before { background: var(--last); }
+.sq.sel::before { background: var(--sel); }
+.sq.chk::before { background: radial-gradient(circle, var(--check) 0%, transparent 72%); }
+.sq:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; z-index: 2; }
+.sq .dot { position: absolute; width: 28%; height: 28%; border-radius: 50%; background: var(--dot); }
+.sq .ring { position: absolute; inset: 5%; border-radius: 50%; border: 4px solid var(--dot); }
+.sq .rk, .sq .fl { position: absolute; font-size: 0.62rem; font-weight: 600; opacity: 0.75; pointer-events: none; color: var(--sq-dark); }
+.sq.dark .rk, .sq.dark .fl { color: var(--sq-light); }
+.sq .rk { top: 2px; left: 3px; }
+.sq .fl { bottom: 1px; right: 3px; }
+.pc { position: relative; z-index: 1; line-height: 1; font-size: min(8.4vw, 50px); font-size: 11cqw; font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", "Apple Symbols", "DejaVu Sans", system-ui, sans-serif; -webkit-text-stroke: 1.4px var(--stroke); paint-order: stroke fill; pointer-events: none; }
+.pc.w { color: var(--w-piece); --stroke: var(--w-stroke); }
+.pc.b { color: var(--b-piece); --stroke: var(--b-stroke); }
+.arrows { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 3; }
+.promo { position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.45); border-radius: 6px; }
+.promo .row { display: flex; gap: 8px; background: var(--surface); padding: 10px; border-radius: 10px; border: 1px solid var(--line); }
+.promo button { font-size: 2.2rem; line-height: 1; width: 56px; height: 56px; border-radius: 8px; border: 1px solid var(--line); background: var(--sq-light); cursor: pointer; font-family: "Segoe UI Symbol", "Noto Sans Symbols 2", "Apple Symbols", "DejaVu Sans", sans-serif; }
+.promo button.w { color: var(--w-piece); -webkit-text-stroke: 1.2px var(--w-stroke); paint-order: stroke fill; }
+.promo button.b { color: var(--b-piece); -webkit-text-stroke: 1.2px var(--b-stroke); paint-order: stroke fill; }
+.status { margin: 0; font-weight: 600; min-height: 1.4em; }
+.actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (min-width: 420px) { .actions { grid-template-columns: 1.4fr 1fr 1fr 1.2fr; } }
+.btn { font: inherit; font-weight: 600; font-size: 0.92rem; min-height: 44px; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; }
+.btn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn:focus-visible, .seg button:focus-visible, .line:focus-visible, summary:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; min-width: 0; }
+.card h2 { font-family: var(--font-display); font-size: 1rem; margin: 0 0 8px; }
+.muted { color: var(--muted); margin: 0; }
+.best { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.best .bm { font-family: var(--font-display); font-weight: 700; font-size: 2rem; line-height: 1.1; color: var(--accent); }
+.best .ev { font-variant-numeric: tabular-nums; font-weight: 600; font-size: 1.1rem; }
+.meta { color: var(--muted); font-size: 0.82rem; margin: 2px 0 10px; }
+.lines { display: flex; flex-direction: column; gap: 6px; }
+.line { display: grid; grid-template-columns: 4.2rem minmax(0, 1fr); gap: 8px; align-items: start; text-align: left; font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: transparent; color: var(--fg); cursor: pointer; min-height: 44px; }
+.line[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.line .s { font-variant-numeric: tabular-nums; font-weight: 600; }
+.line .p { overflow-wrap: anywhere; font-size: 0.9rem; }
+.moves { display: flex; flex-wrap: wrap; gap: 4px 10px; font-variant-numeric: tabular-nums; max-height: 180px; overflow-y: auto; }
+.moves span { white-space: nowrap; }
+.moves .n { color: var(--muted); }
+details.card summary { cursor: pointer; font-family: var(--font-display); font-weight: 700; min-height: 32px; }
+.fields { display: grid; gap: 12px; margin-top: 12px; }
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field label { font-size: 0.82rem; color: var(--muted); }
+.field select, .field input[type="text"] { font: inherit; padding: 10px; min-height: 44px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); width: 100%; min-width: 0; }
+.field input[type="range"] { width: 100%; min-height: 32px; accent-color: var(--accent); }
+.check { flex-direction: row; align-items: center; gap: 10px; }
+.check input { width: 22px; height: 22px; accent-color: var(--accent); }
+.check label { color: var(--fg); font-size: 0.95rem; }
+.row2 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.note { font-size: 0.8rem; color: var(--muted); margin: 0; }
+.err { color: var(--err); font-size: 0.85rem; margin: 0; min-height: 1.2em; }
+@media (prefers-reduced-motion: reduce) { .evalfill { transition: none; } }
+</style>
+</head>
+<body>
+<main class="app">
+  <header class="top">
+    <div>
+      <h1>Lance Certo</h1>
+      <p class="sub">Melhores lances para treinar contra bots</p>
+    </div>
+    <span id="eng" class="chip" role="status">Carregando Stockfish…</span>
+  </header>
+
+  <div class="seg" role="group" aria-label="Modo de uso">
+    <button id="m-bot" type="button" aria-pressed="true">Jogar contra o bot</button>
+    <button id="m-mirror" type="button" aria-pressed="false">Espelhar partida</button>
+  </div>
+
+  <div class="layout">
+    <section class="left" aria-label="Tabuleiro">
+      <div class="boardwrap">
+        <div class="evalbar" id="evalbar" title="Avaliação do ponto de vista das brancas"><div class="evalfill" id="evalfill"></div></div>
+        <div class="boardbox" id="boardbox">
+          <div class="board" id="board"></div>
+          <svg class="arrows" id="arrows" viewBox="0 0 8 8" aria-hidden="true"></svg>
+          <div class="promo" id="promo" hidden></div>
+        </div>
+      </div>
+      <p id="status" class="status" aria-live="polite"></p>
+      <div class="actions">
+        <button id="b-hint" type="button" class="btn primary">Melhor lance</button>
+        <button id="b-undo" type="button" class="btn">Desfazer</button>
+        <button id="b-flip" type="button" class="btn">Virar</button>
+        <button id="b-new" type="button" class="btn">Nova partida</button>
+      </div>
+    </section>
+
+    <section class="right" aria-label="Análise">
+      <div class="card">
+        <h2>Melhor lance</h2>
+        <div id="hint"></div>
+      </div>
+      <div class="card">
+        <h2>Lances da partida</h2>
+        <div id="moves" class="moves"></div>
+      </div>
+      <details class="card">
+        <summary>Ajustes e posição</summary>
+        <div class="fields">
+          <div class="field">
+            <label for="f-side">Seu lado</label>
+            <select id="f-side">
+              <option value="w">Brancas</option>
+              <option value="b">Pretas</option>
+            </select>
+          </div>
+          <div id="g-bot" class="fields" style="margin-top:0">
+            <div class="field">
+              <label for="f-level">Nível do bot: <output id="o-level">8</output> (0 a 20)</label>
+              <input id="f-level" type="range" min="0" max="20" step="1" value="8">
+              <p class="note">É o Skill Level do Stockfish. Não equivale à nota dos bots do Chess.com.</p>
+            </div>
+            <div class="field">
+              <label for="f-botms">Tempo de pensar do bot</label>
+              <select id="f-botms">
+                <option value="400">0,4 s</option>
+                <option value="700">0,7 s</option>
+                <option value="1500">1,5 s</option>
+                <option value="3000">3 s</option>
+              </select>
+            </div>
+          </div>
+          <div id="g-mirror" class="fields" style="margin-top:0" hidden>
+            <p class="note">Toque os lances dos dois lados, na mesma ordem da partida no Chess.com. O motor analisa a posição atual.</p>
+            <div class="field check">
+              <input id="f-auto" type="checkbox" checked>
+              <label for="f-auto">Analisar depois de cada lance</label>
+            </div>
+          </div>
+          <div class="field">
+            <label for="f-ana">Tempo de análise</label>
+            <select id="f-ana">
+              <option value="1000">1 s</option>
+              <option value="2000">2 s</option>
+              <option value="4000">4 s</option>
+              <option value="8000">8 s</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="f-fen">Posição (FEN)</label>
+            <input id="f-fen" type="text" autocomplete="off" autocapitalize="off" spellcheck="false">
+            <p id="fen-err" class="err" aria-live="polite"></p>
+          </div>
+          <div class="row2">
+            <button id="b-load" type="button" class="btn">Carregar</button>
+            <button id="b-cfen" type="button" class="btn">Copiar FEN</button>
+            <button id="b-cpgn" type="button" class="btn">Copiar PGN</button>
+          </div>
+        </div>
+      </details>
+    </section>
+  </div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.9.3/chess.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /*PURE-START*/
+  var SF_URL = 'https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js';
+  var GLYPH = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
+  var PIECE_PT = { k: 'rei', q: 'dama', r: 'torre', b: 'bispo', n: 'cavalo', p: 'peão' };
+
+  function parseInfo(line) {
+    if (line.indexOf('info ') !== 0 || line.indexOf(' pv ') < 0 || line.indexOf(' score ') < 0) return null;
+    var t = line.split(/\s+/);
+    var o = { multipv: 1, depth: 0, cp: null, mate: null, pv: [], bound: false };
+    for (var i = 1; i < t.length; i++) {
+      var k = t[i];
+      if (k === 'depth') o.depth = +t[++i];
+      else if (k === 'multipv') o.multipv = +t[++i];
+      else if (k === 'score') {
+        var kind = t[++i], v = +t[++i];
+        if (kind === 'cp') o.cp = v; else if (kind === 'mate') o.mate = v;
+        if (t[i + 1] === 'lowerbound' || t[i + 1] === 'upperbound') { o.bound = true; i++; }
+      } else if (k === 'pv') { o.pv = t.slice(i + 1); break; }
+    }
+    if (o.bound || (o.cp === null && o.mate === null) || !o.pv.length || !(o.multipv >= 1)) return null;
+    return o;
+  }
+  function toWhite(o, turn) {
+    var s = turn === 'w' ? 1 : -1;
+    return { cp: o.cp === null ? null : o.cp * s, mate: o.mate === null ? null : o.mate * s };
+  }
+  function formatScore(s) {
+    if (!s) return '—';
+    if (s.mate !== null && s.mate !== undefined) return (s.mate > 0 ? '+' : '-') + 'M' + Math.abs(s.mate);
+    var v = s.cp / 100;
+    if (v === 0) return '0.00';
+    return (v > 0 ? '+' : '-') + Math.abs(v).toFixed(2);
+  }
+  function winShare(s) {
+    if (!s) return 0.5;
+    var p;
+    if (s.mate !== null && s.mate !== undefined) p = s.mate > 0 ? 1 : 0;
+    else p = 1 / (1 + Math.exp(-s.cp / 400));
+    return Math.min(0.98, Math.max(0.02, p));
+  }
+  function uciToMove(u) {
+    return { from: u.slice(0, 2), to: u.slice(2, 4), promotion: u.length > 4 ? u[4] : undefined };
+  }
+  function sqToXY(sq, flipped) {
+    var f = sq.charCodeAt(0) - 97, r = +sq[1] - 1;
+    return { x: flipped ? 7 - f : f, y: flipped ? r : 7 - r };
+  }
+  function arrowGeom(from, to, flipped) {
+    var a = sqToXY(from, flipped), b = sqToXY(to, flipped);
+    var ax = a.x + 0.5, ay = a.y + 0.5, bx = b.x + 0.5, by = b.y + 0.5;
+    var dx = bx - ax, dy = by - ay, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L;
+    var hl = 0.36, hw = 0.26;
+    var tx = bx - ux * 0.06, ty = by - uy * 0.06;
+    var hx = tx - ux * hl, hy = ty - uy * hl;
+    return {
+      x1: ax + ux * 0.18, y1: ay + uy * 0.18, x2: hx, y2: hy,
+      head: [[tx, ty], [hx - uy * hw, hy + ux * hw], [hx + uy * hw, hy - ux * hw]]
+    };
+  }
+  function depthFor(level) { return level <= 4 ? 1 : level <= 9 ? 2 : level <= 15 ? 3 : 4; }
+  /*PURE-END*/
+
+  var $ = function (id) { return document.getElementById(id); };
+  if (typeof Chess === 'undefined') {
+    $('status').textContent = 'Não foi possível carregar a biblioteca de regras do xadrez (chess.js). Recarregue a página.';
+    $('status').style.color = 'var(--err)';
+    return;
+  }
+
+  // ---------- Motor reserva (busca simples com chess.js) ----------
+  var TIMEOUT = { timeout: true };
+  var VAL = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 0 };
+  var nodes = 0;
+  function moveOrder(m) {
+    var s = 0;
+    if (m.captured) s += 10 + VAL[m.captured] / 100 - VAL[m.piece] / 1000;
+    if (m.promotion) s += 8;
+    return s;
+  }
+  function boardOf(g) {
+    var rows = [];
+    for (var r = 0; r < 8; r++) {
+      var row = [];
+      for (var f = 0; f < 8; f++) row.push(g.get('abcdefgh'[f] + (8 - r)) || null);
+      rows.push(row);
+    }
+    return rows;
+  }
+  function evalWhite(g) {
+    var b = boardOf(g), s = 0;
+    for (var r = 0; r < 8; r++) {
+      for (var f = 0; f < 8; f++) {
+        var p = b[r][f];
+        if (!p) continue;
+        var v = VAL[p.type];
+        if (p.type === 'p' || p.type === 'n' || p.type === 'b') v += ((3.5 - Math.abs(f - 3.5)) + (3.5 - Math.abs(r - 3.5))) * 4;
+        if (p.type === 'p') v += (p.color === 'w' ? 6 - r : r - 1) * 6;
+        s += p.color === 'w' ? v : -v;
+      }
+    }
+    return s;
+  }
+  function nega(g, depth, alpha, beta, deadline) {
+    if ((++nodes & 127) === 0 && Date.now() > deadline) throw TIMEOUT;
+    if (depth === 0) return (g.turn() === 'w' ? 1 : -1) * evalWhite(g);
+    var ms = g.moves({ verbose: true });
+    if (!ms.length) return g.in_check() ? -(30000 + depth) : 0;
+    ms.sort(function (a, b) { return moveOrder(b) - moveOrder(a); });
+    var best = -Infinity;
+    for (var i = 0; i < ms.length; i++) {
+      var m = ms[i];
+      g.move({ from: m.from, to: m.to, promotion: m.promotion });
+      var sc = -nega(g, depth - 1, -beta, -alpha, deadline);
+      g.undo();
+      if (sc > best) best = sc;
+      if (best > alpha) alpha = best;
+      if (alpha >= beta) break;
+    }
+    return best;
+  }
+  function basicSearch(fen, opts) {
+    var sign = fen.split(' ')[1] === 'w' ? 1 : -1;
+    var mp = opts.bot ? 3 : opts.multipv;
+    var maxD = opts.fallbackDepth || 3;
+    var deadline = Date.now() + opts.ms;
+    var root = new Chess(fen).moves({ verbose: true });
+    if (!root.length) return { lines: [], best: null };
+    root.sort(function (a, b) { return moveOrder(b) - moveOrder(a); });
+    var results = null, depthDone = 0;
+    nodes = 0;
+    for (var d = 1; d <= maxD; d++) {
+      var g = new Chess(fen), cur = [], alpha = -Infinity, aborted = false;
+      try {
+        for (var i = 0; i < root.length; i++) {
+          if (Date.now() > deadline) throw TIMEOUT;
+          var m = root[i];
+          g.move({ from: m.from, to: m.to, promotion: m.promotion });
+          var sc = -nega(g, d - 1, -Infinity, -alpha, deadline);
+          g.undo();
+          if (cur.length >= mp && sc <= alpha) continue;
+          cur.push({ m: m, sc: sc });
+          cur.sort(function (a, b) { return b.sc - a.sc; });
+          if (cur.length > mp) cur.length = mp;
+          if (cur.length >= mp) alpha = cur[mp - 1].sc;
+        }
+      } catch (e) {
+        if (e !== TIMEOUT) throw e;
+        aborted = true;
+      }
+      if (aborted) break;
+      results = cur; depthDone = d;
+      root = cur.map(function (r) { return r.m; }).concat(root.filter(function (x) {
+        return !cur.some(function (r) { return r.m === x; });
+      }));
+    }
+    if (!results) {
+      results = root.slice(0, mp).map(function (m) { return { m: m, sc: 0 }; });
+    }
+    var lines = results.map(function (r) {
+      var o = { depth: depthDone, pv: [r.m.from + r.m.to + (r.m.promotion || '')], cp: null, mate: null };
+      if (Math.abs(r.sc) >= 29000) {
+        var plies = depthDone - (Math.abs(r.sc) - 30000);
+        o.mate = (r.sc > 0 ? 1 : -1) * sign * Math.max(1, Math.ceil(plies / 2));
+      } else o.cp = r.sc * sign;
+      return o;
+    });
+    var best = lines[0].pv[0];
+    if (opts.bot) {
+      var p = (20 - opts.skill) / 40;
+      if (Math.random() < p) best = lines[Math.floor(Math.random() * lines.length)].pv[0];
+      if (opts.skill <= 2 && Math.random() < 0.3) {
+        var rm = root[Math.floor(Math.random() * root.length)];
+        best = rm.from + rm.to + (rm.promotion || '');
+      }
+    }
+    return { lines: lines.slice(0, opts.bot ? 1 : opts.multipv), best: best };
+  }
+
+  // ---------- Motor (Stockfish num worker, com reserva) ----------
+  function createEngine(onStatus) {
+    var w = null, kind = 'loading', ready = false, cur = null, next = null, boot = null, name = 'Stockfish', bootTimer = null, attempt = 0;
+
+    function post(s) { if (w) w.postMessage(s); }
+    function startJob(job) {
+      cur = job;
+      if (kind === 'fallback') { setTimeout(function () { runFallback(job); }, 30); return; }
+      post('setoption name Skill Level value ' + job.opts.skill);
+      post('setoption name MultiPV value ' + (job.opts.bot ? 1 : job.opts.multipv));
+      post('position fen ' + job.fen);
+      post('go movetime ' + job.opts.ms);
+    }
+    function finish(job, best) {
+      cur = null;
+      job.resolve(job.cancelled ? null : { best: best, lines: job.lines.filter(Boolean) });
+      if (next) { var n = next; next = null; startJob(n); }
+    }
+    function runFallback(job) {
+      if (job.cancelled) { finish(job, null); return; }
+      var res = null;
+      try { res = basicSearch(job.fen, job.opts); } catch (e) { res = null; }
+      if (!res || !res.best) { finish(job, null); return; }
+      job.lines = res.lines;
+      if (job.onInfo) job.onInfo(job.lines);
+      finish(job, res.best);
+    }
+    function flush() { if (boot) { var b = boot; boot = null; startJob(b); } }
+    function toFallback(why) {
+      if (kind === 'fallback') return;
+      clearTimeout(bootTimer);
+      try { if (w) w.terminate(); } catch (e) { /* worker já encerrado */ }
+      w = null; kind = 'fallback'; ready = true;
+      onStatus('fallback', why);
+      flush();
+    }
+    function onMsg(line) {
+      if (typeof line !== 'string') return;
+      if (line.indexOf('id name ') === 0) name = line.slice(8).trim();
+      else if (line === 'uciok') post('isready');
+      else if (line === 'readyok' && !ready) { clearTimeout(bootTimer); ready = true; kind = 'stockfish'; onStatus('stockfish', name); flush(); }
+      else if (line.indexOf('info ') === 0 && cur && !cur.cancelled) {
+        var o = parseInfo(line);
+        if (o) {
+          var s = toWhite(o, cur.turn);
+          cur.lines[o.multipv - 1] = { cp: s.cp, mate: s.mate, depth: o.depth, pv: o.pv };
+          if (cur.onInfo) cur.onInfo(cur.lines.filter(Boolean));
+        }
+      } else if (line.indexOf('bestmove') === 0 && cur) {
+        finish(cur, line.split(/\s+/)[1]);
+      }
+    }
+    // Camadas: 1) Stockfish moderno ao lado do index.html; 2) Stockfish 10 da cdnjs; 3) motor reserva.
+    var SOURCES = [
+      { label: 'Stockfish local', make: function () { return new Worker('stockfish-19-lite-single.js'); } },
+      { label: 'Stockfish da cdnjs', make: function () {
+        var blob = new Blob(["importScripts('" + SF_URL + "');"], { type: 'text/javascript' });
+        return new Worker(URL.createObjectURL(blob));
+      } }
+    ];
+    function tryNext(i, why) {
+      if (i >= SOURCES.length) { toFallback(why || 'nenhum Stockfish carregou'); return; }
+      var gen = ++attempt;
+      function giveUp(msg) {
+        if (gen !== attempt || ready) return;
+        clearTimeout(bootTimer);
+        try { if (w) w.terminate(); } catch (e) { /* já encerrado */ }
+        w = null;
+        tryNext(i + 1, msg);
+      }
+      try { w = SOURCES[i].make(); } catch (e) { w = null; tryNext(i + 1, 'worker bloqueado'); return; }
+      w.onmessage = function (e) { if (gen === attempt) onMsg(e.data); };
+      w.onerror = function () { giveUp('falha ao carregar: ' + SOURCES[i].label); };
+      post('uci');
+      bootTimer = setTimeout(function () { giveUp('demorou demais: ' + SOURCES[i].label); }, 15000);
+    }
+    tryNext(0);
+
+    return {
+      search: function (fen, opts, onInfo) {
+        return new Promise(function (resolve) {
+          var job = { fen: fen, opts: opts, onInfo: onInfo, resolve: resolve, cancelled: false, lines: [], turn: fen.split(' ')[1] };
+          if (!ready) { if (boot) boot.resolve(null); boot = job; return; }
+          if (cur) {
+            cur.cancelled = true;
+            if (kind === 'stockfish') post('stop');
+            if (next) next.resolve(null);
+            next = job;
+          } else startJob(job);
+        });
+      },
+      cancel: function () {
+        if (boot) { boot.resolve(null); boot = null; }
+        if (next) { next.resolve(null); next = null; }
+        if (cur) { cur.cancelled = true; if (kind === 'stockfish') post('stop'); }
+      },
+      kind: function () { return kind; }
+    };
+  }
+
+  // ---------- Estado do app ----------
+  var S = { mode: 'bot', side: 'w', flipped: false, level: 8, botMs: 700, anaMs: 2000, auto: true,
+    sel: null, legal: [], last: null, lines: [], arrowIdx: 0, thinking: false, analyzing: false,
+    token: 0, hintFen: null, promo: null, engineName: '' };
+  var game = new Chess();
+  var engine = createEngine(function (kind, info) {
+    var chip = $('eng');
+    if (kind === 'stockfish') { S.engineName = info; chip.textContent = info + ' pronto'; chip.className = 'chip ok'; }
+    else { S.engineName = 'Motor reserva'; chip.textContent = 'Motor reserva (fraco): ' + info; chip.className = 'chip warn'; }
+    renderPanel();
+  });
+
+  try {
+    var saved = JSON.parse(localStorage.getItem('lancecerto') || '{}');
+    if (saved.level >= 0 && saved.level <= 20) S.level = saved.level;
+    if (saved.botMs) S.botMs = saved.botMs;
+    if (saved.anaMs) S.anaMs = saved.anaMs;
+    if (typeof saved.auto === 'boolean') S.auto = saved.auto;
+    if (saved.side === 'w' || saved.side === 'b') S.side = saved.side;
+    if (saved.mode === 'bot' || saved.mode === 'mirror') S.mode = saved.mode;
+  } catch (e) { /* armazenamento indisponível */ }
+  function saveSettings() {
+    try { localStorage.setItem('lancecerto', JSON.stringify({ level: S.level, botMs: S.botMs, anaMs: S.anaMs, auto: S.auto, side: S.side, mode: S.mode })); } catch (e) { /* ignora */ }
+  }
+
+  function over() { return game.game_over(); }
+  function humanTurn() { return S.mode === 'mirror' || game.turn() === S.side; }
+  function clearSel() { S.sel = null; S.legal = []; }
+  function clearHints() { S.lines = []; S.arrowIdx = 0; S.analyzing = false; S.hintFen = null; }
+  function lastFromHistory() {
+    var h = game.history({ verbose: true }), l = h[h.length - 1];
+    return l ? { from: l.from, to: l.to } : null;
+  }
+
+  // ---------- Renderização ----------
+  function renderBoard() {
+    var html = '', inCheck = game.in_check(), turn = game.turn();
+    for (var row = 0; row < 8; row++) {
+      for (var col = 0; col < 8; col++) {
+        var r = S.flipped ? 7 - row : row, f = S.flipped ? 7 - col : col;
+        var sq = 'abcdefgh'[f] + (8 - r), p = game.get(sq);
+        var cls = 'sq ' + ((r + f) % 2 === 1 ? 'dark' : 'light');
+        if (S.last && (S.last.from === sq || S.last.to === sq)) cls += ' last';
+        if (S.sel === sq) cls += ' sel';
+        if (inCheck && p && p.type === 'k' && p.color === turn) cls += ' chk';
+        var inner = '';
+        if (col === 0) inner += '<span class="rk">' + (8 - r) + '</span>';
+        if (row === 7) inner += '<span class="fl">' + 'abcdefgh'[f] + '</span>';
+        var isTarget = S.legal.some(function (m) { return m.to === sq; });
+        if (isTarget) inner += p ? '<span class="ring"></span>' : '<span class="dot"></span>';
+        if (p) inner += '<span class="pc ' + p.color + '">' + GLYPH[p.type] + '︎</span>';
+        var label = sq + (p ? ', ' + PIECE_PT[p.type] + (p.color === 'w' ? ' branco' : ' preto') : ', vazia');
+        html += '<button type="button" class="' + cls + '" data-sq="' + sq + '" aria-label="' + label + '">' + inner + '</button>';
+      }
+    }
+    $('board').innerHTML = html;
+  }
+
+  function renderArrows() {
+    var svg = $('arrows'), out = '';
+    S.lines.forEach(function (ln, i) {
+      var u = ln.pv && ln.pv[0];
+      if (!u || u.length < 4) return;
+      var g = arrowGeom(u.slice(0, 2), u.slice(2, 4), S.flipped);
+      var sel = i === S.arrowIdx, op = sel ? 0.9 : 0.32, sw = sel ? 0.15 : 0.1;
+      out += '<g opacity="' + op + '"><line x1="' + g.x1 + '" y1="' + g.y1 + '" x2="' + g.x2 + '" y2="' + g.y2 +
+        '" stroke="var(--accent)" stroke-width="' + sw + '" stroke-linecap="round"/><polygon points="' +
+        g.head.map(function (p) { return p[0] + ',' + p[1]; }).join(' ') + '" fill="var(--accent)"/></g>';
+    });
+    svg.innerHTML = out;
+  }
+
+  function renderBar() {
+    var s = S.lines[0] ? { cp: S.lines[0].cp, mate: S.lines[0].mate } : null;
+    var pct = Math.round(winShare(s) * 100);
+    $('evalfill').style.height = pct + '%';
+    $('evalbar').className = 'evalbar' + (S.flipped ? ' flip' : '');
+  }
+
+  function formatPV(fen, pv, maxPlies) {
+    var c = new Chess(fen), parts = fen.split(' '), num = +parts[5] || 1, turn = parts[1], out = [];
+    for (var i = 0; i < pv.length && i < maxPlies; i++) {
+      var m = c.move(uciToMove(pv[i]));
+      if (!m) break;
+      if (turn === 'w') out.push(num + '. ' + m.san);
+      else out.push((i === 0 ? num + '... ' : '') + m.san);
+      if (turn === 'b') num++;
+      turn = turn === 'w' ? 'b' : 'w';
+    }
+    return out.join(' ');
+  }
+  function firstSan(fen, uci) {
+    var m = new Chess(fen).move(uciToMove(uci));
+    return m ? m.san : uci;
+  }
+
+  function renderPanel() {
+    var el = $('hint');
+    if (S.thinking) { el.innerHTML = '<p class="muted">O bot está pensando…</p>'; renderBar(); renderArrows(); return; }
+    if (!S.lines.length) {
+      var msg;
+      if (S.analyzing) msg = engine.kind() === 'loading' ? 'Carregando o motor…' : 'Analisando…';
+      else if (S.mode === 'mirror' && S.auto) msg = 'A análise aparece aqui depois do primeiro lance ou ao tocar em Reanalisar.';
+      else msg = 'Toque em Melhor lance para analisar a posição atual.';
+      el.innerHTML = '<p class="muted">' + msg + '</p>';
+      renderBar(); renderArrows();
+      return;
+    }
+    var fen = S.hintFen, top = S.lines[0];
+    var html = '<div class="best"><span class="bm">' + firstSan(fen, top.pv[0]) + '</span><span class="ev">' + formatScore(top) + '</span></div>';
+    html += '<p class="meta">Profundidade ' + top.depth + ' · ' + (S.engineName || 'motor') + (S.analyzing ? ' · analisando…' : '') + ' · nota do ponto de vista das brancas</p>';
+    html += '<div class="lines">';
+    S.lines.forEach(function (ln, i) {
+      html += '<button type="button" class="line" data-i="' + i + '" aria-pressed="' + (i === S.arrowIdx) + '">' +
+        '<span class="s">' + formatScore(ln) + '</span><span class="p">' + formatPV(fen, ln.pv, 6) + '</span></button>';
+    });
+    html += '</div>';
+    el.innerHTML = html;
+    renderBar(); renderArrows();
+  }
+
+  function ask(n) { return typeof game[n] === 'function' && game[n](); }
+  function overText() {
+    if (ask('in_checkmate')) return 'Xeque-mate. ' + (game.turn() === 'w' ? 'As pretas' : 'As brancas') + ' vencem.';
+    if (ask('in_stalemate')) return 'Empate por afogamento.';
+    if (ask('insufficient_material')) return 'Empate por material insuficiente.';
+    if (ask('in_threefold_repetition')) return 'Empate por repetição.';
+    return 'Empate.';
+  }
+  function renderStatus() {
+    var t;
+    if (over()) t = overText();
+    else if (S.mode === 'bot' && S.thinking) t = 'O bot está pensando…';
+    else {
+      var side = game.turn() === 'w' ? 'brancas' : 'pretas';
+      t = (S.mode === 'bot' && game.turn() === S.side ? 'Sua vez (' + side + ').' : 'Vez das ' + side + '.');
+      if (game.in_check()) t += ' Xeque.';
+    }
+    $('status').textContent = t;
+    var hist = game.history();
+    var hint = $('b-hint');
+    hint.disabled = over() || (S.mode === 'bot' && !humanTurn());
+    hint.textContent = (S.mode === 'mirror' && S.auto) ? 'Reanalisar' : 'Melhor lance';
+    $('b-undo').disabled = hist.length === 0;
+  }
+  function renderMoves() {
+    var h = game.history(), html = '';
+    if (!h.length) { $('moves').innerHTML = '<p class="muted">Nenhum lance ainda.</p>'; return; }
+    for (var i = 0; i < h.length; i += 2) {
+      html += '<span><span class="n">' + (i / 2 + 1) + '.</span> ' + h[i] + (h[i + 1] ? ' ' + h[i + 1] : '') + '</span>';
+    }
+    $('moves').innerHTML = html;
+  }
+  function renderPromo() {
+    var el = $('promo');
+    if (!S.promo) { el.hidden = true; el.innerHTML = ''; return; }
+    var c = game.turn();
+    var btns = ['q', 'r', 'b', 'n'].map(function (t) {
+      return '<button type="button" class="' + c + '" data-p="' + t + '" aria-label="Promover a ' + PIECE_PT[t] + '">' + GLYPH[t] + '︎</button>';
+    }).join('');
+    el.innerHTML = '<div class="row">' + btns + '<button type="button" data-p="x" aria-label="Cancelar" style="font-size:1.2rem;font-family:inherit">✕</button></div>';
+    el.hidden = false;
+  }
+  function renderAll() {
+    var errs = [];
+    [renderBoard, renderStatus, renderMoves, renderPanel, renderPromo].forEach(function (fn) {
+      try { fn(); } catch (e) { errs.push(fn.name + ': ' + (e && e.message ? e.message : e)); }
+    });
+    try {
+      $('f-fen').value = game.fen();
+      $('m-bot').setAttribute('aria-pressed', S.mode === 'bot');
+      $('m-mirror').setAttribute('aria-pressed', S.mode === 'mirror');
+      $('g-bot').hidden = S.mode !== 'bot';
+      $('g-mirror').hidden = S.mode !== 'mirror';
+    } catch (e) { errs.push('ajustes: ' + (e && e.message ? e.message : e)); }
+    if (errs.length) {
+      $('status').textContent = 'Erro interno: ' + errs.join(' | ');
+      $('status').style.color = 'var(--err)';
+    } else $('status').style.color = '';
+  }
+  var raf = 0;
+  function softInfo() { if (raf) return; raf = requestAnimationFrame(function () { raf = 0; renderPanel(); }); }
+
+  // ---------- Jogadas ----------
+  function commit(from, to, promotion) {
+    var mv = game.move({ from: from, to: to, promotion: promotion });
+    if (!mv) return;
+    S.token++; engine.cancel(); S.thinking = false;
+    S.last = { from: mv.from, to: mv.to };
+    S.promo = null; clearSel(); clearHints();
+    renderAll();
+    if (over()) return;
+    if (S.mode === 'bot' && game.turn() !== S.side) botMove();
+    else maybeAuto();
+  }
+  function maybeAuto() { if (S.mode === 'mirror' && S.auto && !over()) analyze(); }
+
+  function botMove() {
+    var tok = ++S.token, fen = game.fen();
+    S.thinking = true; renderStatus(); renderPanel();
+    engine.search(fen, { ms: S.botMs, multipv: 1, skill: S.level, bot: true, fallbackDepth: depthFor(S.level) }, null).then(function (r) {
+      if (tok !== S.token) return;
+      S.thinking = false;
+      if (!r || !r.best) { renderAll(); return; }
+      var mv = game.move(uciToMove(r.best));
+      if (mv) S.last = { from: mv.from, to: mv.to };
+      clearHints(); renderAll();
+    });
+  }
+
+  function analyze() {
+    if (over()) return;
+    var tok = ++S.token, fen = game.fen();
+    S.analyzing = true; S.lines = []; S.arrowIdx = 0; S.hintFen = fen;
+    renderStatus(); renderPanel();
+    engine.search(fen, { ms: S.anaMs, multipv: 3, skill: 20, fallbackDepth: 4 }, function (lines) {
+      if (tok !== S.token) return;
+      S.lines = lines; softInfo();
+    }).then(function (r) {
+      if (tok !== S.token) return;
+      S.analyzing = false;
+      if (r && r.lines.length) S.lines = r.lines;
+      renderPanel();
+    });
+  }
+
+  function undo() {
+    S.token++; engine.cancel(); S.thinking = false; S.analyzing = false; S.promo = null;
+    if (!game.history().length) return;
+    game.undo();
+    if (S.mode === 'bot' && game.turn() !== S.side && game.history().length) game.undo();
+    S.last = lastFromHistory(); clearSel(); clearHints(); renderAll();
+    if (S.mode === 'bot' && game.turn() !== S.side && !over()) botMove(); else maybeAuto();
+  }
+  function newGame(fen) {
+    S.token++; engine.cancel(); S.thinking = false; S.analyzing = false; S.promo = null;
+    game = new Chess();
+    if (fen) game.load(fen);
+    S.last = null; clearSel(); clearHints();
+    S.flipped = S.side === 'b';
+    renderAll();
+    if (S.mode === 'bot' && game.turn() !== S.side && !over()) botMove(); else maybeAuto();
+  }
+
+  // ---------- Eventos ----------
+  $('board').addEventListener('click', function (e) {
+    var btn = e.target.closest('.sq');
+    if (!btn || S.promo || over() || !humanTurn()) return;
+    var sq = btn.getAttribute('data-sq');
+    if (S.sel) {
+      var cands = S.legal.filter(function (m) { return m.to === sq; });
+      if (cands.length) {
+        if (cands[0].promotion) { S.promo = { from: S.sel, to: sq }; renderPromo(); return; }
+        commit(cands[0].from, cands[0].to, undefined);
+        return;
+      }
+    }
+    var p = game.get(sq);
+    if (p && p.color === game.turn() && (S.mode === 'mirror' || p.color === S.side)) {
+      S.sel = sq; S.legal = game.moves({ square: sq, verbose: true });
+    } else clearSel();
+    renderBoard();
+  });
+  $('promo').addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b || !S.promo) return;
+    var p = b.getAttribute('data-p'), pr = S.promo;
+    if (p === 'x') { S.promo = null; renderPromo(); return; }
+    commit(pr.from, pr.to, p);
+  });
+  $('hint').addEventListener('click', function (e) {
+    var b = e.target.closest('.line');
+    if (!b) return;
+    S.arrowIdx = +b.getAttribute('data-i');
+    renderPanel();
+  });
+  $('b-hint').addEventListener('click', function () { if (!over() && humanTurn()) analyze(); });
+  $('b-undo').addEventListener('click', undo);
+  $('b-flip').addEventListener('click', function () { S.flipped = !S.flipped; renderBoard(); renderArrows(); renderBar(); });
+  $('b-new').addEventListener('click', function () { newGame(); });
+  $('m-bot').addEventListener('click', function () {
+    if (S.mode === 'bot') return;
+    S.mode = 'bot'; saveSettings(); S.token++; engine.cancel(); S.analyzing = false; clearHints(); clearSel(); renderAll();
+    if (game.turn() !== S.side && !over()) botMove();
+  });
+  $('m-mirror').addEventListener('click', function () {
+    if (S.mode === 'mirror') return;
+    S.mode = 'mirror'; saveSettings(); S.token++; engine.cancel(); S.thinking = false; clearHints(); clearSel(); renderAll(); maybeAuto();
+  });
+  $('f-side').addEventListener('change', function (e) {
+    S.side = e.target.value; saveSettings();
+    if (S.mode === 'bot') newGame(); else { S.flipped = S.side === 'b'; renderAll(); }
+  });
+  $('f-level').addEventListener('input', function (e) { S.level = +e.target.value; $('o-level').textContent = S.level; saveSettings(); });
+  $('f-botms').addEventListener('change', function (e) { S.botMs = +e.target.value; saveSettings(); });
+  $('f-ana').addEventListener('change', function (e) { S.anaMs = +e.target.value; saveSettings(); });
+  $('f-auto').addEventListener('change', function (e) { S.auto = e.target.checked; saveSettings(); renderStatus(); maybeAuto(); });
+  $('b-load').addEventListener('click', function () {
+    var fen = $('f-fen').value.trim().replace(/\s+/g, ' ');
+    if (fen.split(' ').length === 4) fen += ' 0 1';
+    var test = new Chess();
+    if (!test.load(fen)) { $('fen-err').textContent = 'FEN inválido. Confira as seis partes e as casas das peças.'; return; }
+    $('fen-err').textContent = '';
+    newGame(fen);
+  });
+  function copyText(text) {
+    var done = function () { $('fen-err').textContent = 'Copiado.'; };
+    var fail = function () {
+      $('f-fen').value = text; $('f-fen').focus(); $('f-fen').select();
+      $('fen-err').textContent = 'Não consegui copiar sozinho. O texto está selecionado no campo; copie manualmente.';
+    };
+    try { navigator.clipboard.writeText(text).then(done, fail); } catch (e) { fail(); }
+  }
+  $('b-cfen').addEventListener('click', function () { copyText(game.fen()); });
+  $('b-cpgn').addEventListener('click', function () { copyText(game.pgn()); });
+
+  // ---------- Início ----------
+  $('f-side').value = S.side;
+  $('f-level').value = S.level; $('o-level').textContent = S.level;
+  $('f-botms').value = String(S.botMs);
+  $('f-ana').value = String(S.anaMs);
+  $('f-auto').checked = S.auto;
+  S.flipped = S.side === 'b';
+  renderAll();
+  if (S.mode === 'bot' && game.turn() !== S.side) botMove();
+})();
+</script>
+</body>
+</html>
