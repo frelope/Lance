@@ -1,0 +1,33 @@
+name: Publicar site
+
+on: [push, workflow_dispatch]
+
+permissions: {contents: read, pages: write, id-token: write}
+
+concurrency: {group: pages, cancel-in-progress: true}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Montar a pasta do site
+        run: |
+          mkdir -p site
+          cp index.html site/
+          mkdir tmp
+          cd tmp
+          npm init -y > /dev/null
+          npm install stockfish@19.0.1
+          cd ..
+          find tmp/node_modules/stockfish -name 'stockfish-19-lite-single.*' -exec cp {} site/ \;
+          ls -la site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4
