@@ -17,7 +17,7 @@ jobs:
       - name: Montar a pasta do site
         run: |
           mkdir -p site
-          cp index.html site/
+          cp lance-certo.html site/index.html
           mkdir tmp
           cd tmp
           npm init -y > /dev/null
